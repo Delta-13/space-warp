@@ -1,0 +1,728 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#030509">
+  <meta name="description" content="一个可离线打开的星空与曲速入场动画。">
+  <title>Space · 星空与曲速</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23030509'/%3E%3Cpath d='M32 10 37 27 54 32 37 37 32 54 27 37 10 32 27 27Z' fill='white'/%3E%3C/svg%3E">
+  <style>
+    :root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; overflow: hidden; color: #f5f6f8; background: #030509; }
+    button, input { font: inherit; }
+    button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+    button:focus-visible, input:focus-visible { outline: 2px solid #b6ceff; outline-offset: 5px; }
+    button:disabled { cursor: default; }
+    [hidden] { display: none !important; }
+    #universe { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; }
+    body.lensing #universe { cursor: none; }
+    .vignette { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 48%, transparent 30%, rgba(0, 0, 0, .45) 100%); }
+    .chrome { transition: opacity .5s, visibility .5s; }
+    .header { position: fixed; z-index: 2; top: max(30px, env(safe-area-inset-top)); left: max(36px, env(safe-area-inset-left)); right: max(36px, env(safe-area-inset-right)); display: flex; align-items: center; justify-content: space-between; }
+    .brand { display: flex; align-items: center; gap: 11px; font-size: 19px; font-weight: 550; letter-spacing: -.5px; }
+    svg { display: block; flex-shrink: 0; }
+    .brand svg { width: 22px; height: 22px; }
+    .quiet-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 42px; padding: 0 14px; border: 1px solid rgba(255,255,255,.13); border-radius: 999px; background: rgba(10,14,22,.42); color: #c8ccd5; font-size: 12px; backdrop-filter: blur(14px); transition: background .2s, border-color .2s, color .2s; }
+    .quiet-button:hover { background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.28); color: #fff; }
+    .quiet-button svg { width: 15px; height: 15px; }
+    .welcome { position: fixed; z-index: 1; left: 50%; top: 48%; width: min(90vw, 680px); text-align: center; opacity: 0; transform: translate(-50%, -44%) scale(.98); filter: blur(5px); transition: opacity 1.2s, transform 1.4s cubic-bezier(.2,.7,.2,1), filter 1s; pointer-events: none; }
+    body.ready .welcome { opacity: 1; transform: translate(-50%, -50%) scale(1); filter: blur(0); pointer-events: auto; }
+    body.in-flight .welcome { opacity: 0; transform: translate(-50%, -50%) scale(1.08); filter: blur(8px); pointer-events: none; transition-duration: .45s; }
+    .eyebrow { margin: 0 0 18px; color: #a8adb9; font-size: 12px; letter-spacing: .25em; text-indent: .25em; }
+    h1 { margin: 0; font-size: clamp(70px, 9vw, 116px); line-height: 1.05; font-weight: 450; letter-spacing: -.065em; text-indent: -.065em; text-shadow: 0 0 65px rgba(165,189,235,.12); }
+    .subtitle { margin: 23px 0 34px; color: #a6adb9; font-size: 14px; line-height: 1.8; letter-spacing: .04em; }
+    .replay { display: inline-flex; align-items: center; gap: 10px; min-height: 46px; padding: 0 21px; border: 1px solid rgba(255,255,255,.78); border-radius: 999px; color: #14171d; background: #edf0f6; font-size: 13px; font-weight: 550; box-shadow: 0 0 26px rgba(190,208,246,.09); transition: transform .2s, background .2s; }
+    .replay:hover { background: #fff; transform: translateY(-2px); }
+    .replay svg { width: 15px; height: 15px; }
+    .hint { margin: 17px 0 0; font-size: 11px; color: #777e8b; }
+    kbd { font-family: inherit; }
+    .footer { position: fixed; z-index: 3; bottom: max(27px, env(safe-area-inset-bottom)); left: max(36px, env(safe-area-inset-left)); right: max(36px, env(safe-area-inset-right)); display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+    .flight-status { display: flex; align-items: center; gap: 10px; color: #969eae; font-size: 11px; letter-spacing: .05em; }
+    .status-dot { width: 5px; height: 5px; border-radius: 50%; background: #9facbf; box-shadow: 0 0 10px #9facbf80; }
+    body.in-flight .status-dot { background: #c5d7ff; box-shadow: 0 0 14px #a5c4ff; }
+    .flight-progress { height: 1px; width: 62px; background: #ffffff15; overflow: hidden; }
+    .flight-progress span { display: block; height: 100%; width: 0; background: #bac9e2; }
+    .tools { display: flex; gap: 8px; align-items: center; }
+    .icon-button { width: 42px; padding: 0; }
+    .settings { position: fixed; z-index: 4; right: max(36px, env(safe-area-inset-right)); bottom: calc(max(27px, env(safe-area-inset-bottom)) + 58px); width: 280px; max-width: calc(100vw - 32px); padding: 21px; border: 1px solid #ffffff1a; border-radius: 18px; background: rgba(12,16,24,.88); box-shadow: 0 12px 60px #0008; backdrop-filter: blur(24px); }
+    .settings-title { margin: 0 0 22px; font-size: 13px; font-weight: 500; }
+    .setting + .setting { margin-top: 23px; }
+    .setting-label { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 13px; color: #aeb5c1; font-size: 12px; }
+    output { color: #e1e6ef; font-variant-numeric: tabular-nums; }
+    input[type="range"] { display: block; width: 100%; height: 16px; margin: 0; accent-color: #c0cde5; cursor: pointer; }
+    .setting-note { margin: 18px 0 0; color: #7f889a; font-size: 11px; line-height: 1.6; }
+    .return-button { position: fixed; z-index: 5; top: max(26px, env(safe-area-inset-top)); right: max(26px, env(safe-area-inset-right)); opacity: 0; visibility: hidden; transition: opacity .4s, visibility .4s; }
+    body.immersive .chrome { opacity: 0; visibility: hidden; pointer-events: none; }
+    body.immersive .return-button { opacity: .6; visibility: visible; }
+    body.immersive .return-button:hover { opacity: 1; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+    .fallback { position: fixed; z-index: 10; inset: 0; display: grid; place-content: center; padding: 30px; text-align: center; background: #030509; color: #b7bfce; font-size: 15px; line-height: 1.8; }
+    @media (max-width: 600px) {
+      .header { top: max(22px, env(safe-area-inset-top)); left: max(22px, env(safe-area-inset-left)); right: max(22px, env(safe-area-inset-right)); }
+      .footer { left: max(22px, env(safe-area-inset-left)); right: max(22px, env(safe-area-inset-right)); bottom: max(22px, env(safe-area-inset-bottom)); gap: 10px; }
+      .brand { font-size: 17px; }
+      .welcome { top: 46%; }
+      .subtitle { font-size: 13px; }
+      .flight-progress { display: none; }
+      .settings { right: 22px; bottom: calc(max(22px, env(safe-area-inset-bottom)) + 58px); }
+    }
+    @media (max-height: 440px) {
+      .welcome { top: 47%; }
+      h1 { font-size: 58px; }
+      .eyebrow { margin-bottom: 8px; }
+      .subtitle { margin: 12px 0 18px; }
+      .hint { display: none; }
+      .settings { max-height: calc(100dvh - 110px); overflow-y: auto; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="universe" aria-hidden="true"></canvas>
+  <div class="vignette" aria-hidden="true"></div>
+
+  <header class="header chrome">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m12 2 2.7 7.3L22 12l-7.3 2.7L12 22l-2.7-7.3L2 12l7.3-2.7L12 2Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+      <span>Space</span>
+    </div>
+    <button id="immerse" class="quiet-button" aria-label="隐藏文字与控件，进入纯净模式">
+      <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M7 3H3v4m10-4h4v4M3 13v4h4m10-4v4h-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+      纯净模式
+    </button>
+  </header>
+
+  <main class="welcome chrome" id="welcome" inert>
+    <p class="eyebrow">给想法，一片宇宙</p>
+    <h1>Space</h1>
+    <p class="subtitle">留一片空间，让灵感自由生长。</p>
+    <button class="replay" id="replay">
+      <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M15.8 7A6.2 6.2 0 1 0 16 12M16 3v4h-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      再次跃迁
+    </button>
+    <p class="hint">按 <kbd>空格</kbd> 再次跃迁 · 移动鼠标，弯曲星光</p>
+  </main>
+
+  <footer class="footer chrome">
+    <div class="flight-status">
+      <span class="status-dot" aria-hidden="true"></span>
+      <span id="phase" role="status" aria-live="polite">准备启程</span>
+      <div class="flight-progress" aria-hidden="true"><span id="progress"></span></div>
+    </div>
+    <div class="tools">
+      <button id="pause" class="quiet-button icon-button" aria-label="暂停动画" aria-pressed="false" title="暂停 / 继续（P）">
+        <svg id="pause-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M7 5v10M13 5v10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <svg id="play-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true" hidden><path d="m7 4 9 6-9 6V4Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+      </button>
+      <button id="settings-toggle" class="quiet-button" aria-expanded="false" aria-controls="settings">
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 6h14M3 14h14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><circle cx="7" cy="6" r="2" fill="#10151f" stroke="currentColor" stroke-width="1.2"/><circle cx="13" cy="14" r="2" fill="#10151f" stroke="currentColor" stroke-width="1.2"/></svg>
+        设置
+      </button>
+    </div>
+  </footer>
+
+  <section class="settings chrome" id="settings" aria-labelledby="settings-title" hidden>
+    <h2 class="settings-title" id="settings-title">调整这片星空</h2>
+    <div class="setting">
+      <label class="setting-label" for="density">星星数量 <output id="density-value" for="density">4800</output></label>
+      <input id="density" type="range" min="1200" max="10000" step="200" value="4800">
+    </div>
+    <div class="setting">
+      <label class="setting-label" for="intensity">曲速强度 <output id="intensity-value" for="intensity">1.0×</output></label>
+      <input id="intensity" type="range" min="0.5" max="2" step="0.1" value="1">
+    </div>
+    <p class="setting-note">空格：跃迁　P：暂停　H：纯净模式<br>Esc：返回 / 关闭设置</p>
+  </section>
+
+  <button id="return" class="quiet-button return-button" aria-label="退出纯净模式，显示文字和控件" tabindex="-1">返回 <span aria-hidden="true">↗</span></button>
+  <p id="motion-note" class="sr-only"></p>
+  <noscript><div class="fallback">请启用 JavaScript，以观看星空与曲速动画。</div></noscript>
+
+  <script>
+    (() => {
+      'use strict';
+
+      // 单文件、无依赖。用 3D 透视投影在 Canvas 2D 上绘制星空。
+      const CONFIG = {
+        starCount: 4800,
+        depth: 2200,
+        idleSpeed: 9,        // 世界坐标 / 秒，与帧率无关。
+        warpSpeed: 1550,
+        duration: 5.6,      // 一次完整入场的秒数。
+        intensity: 1,
+        pixelRatioCap: 2,
+        highlightRatio: .024,
+      };
+
+      const canvas = document.getElementById('universe');
+      const ctx = canvas.getContext('2d', { alpha: false });
+      if (!ctx) {
+        const fallback = document.createElement('div');
+        fallback.className = 'fallback';
+        fallback.textContent = '当前浏览器不支持 Canvas，请用现代浏览器打开这个文件。';
+        document.body.append(fallback);
+        return;
+      }
+
+      const $ = (id) => document.getElementById(id);
+      const motionPreference = matchMedia('(prefers-reduced-motion: reduce)');
+      const palette = ['215,231,255', '247,249,255', '187,213,255', '255,234,206'];
+      const stars = [];
+      const pointer = { x: 0, y: 0, targetX: 0, targetY: 0, active: false, strength: 0 };
+      const view = { width: 0, height: 0, focal: 0, dpr: 1 };
+      const lens = { x: 0, y: 0, strength: 0, einsteinRadius: 52, influence: 250 };
+      const imagePoint = {};
+      const trailPoint = {};
+      const state = {
+        time: 0,
+        flightTime: 0,
+        flying: !motionPreference.matches,
+        paused: false,
+        immersive: false,
+        phase: '',
+        lastFrame: null,
+        frameId: null,
+      };
+      let haze;
+
+      const clamp = (n, min = 0, max = 1) => Math.min(max, Math.max(min, n));
+      const smooth = (n) => { const t = clamp(n); return t * t * (3 - 2 * t); };
+
+      // 预绘光晕与衍射星芒；避免为每颗星、每一帧创建渐变。
+      function makeStarSprite(color, highlighted) {
+        const sprite = document.createElement('canvas');
+        sprite.width = sprite.height = 128;
+        const paint = sprite.getContext('2d');
+        const glow = paint.createRadialGradient(64, 64, 0, 64, 64, 64);
+        glow.addColorStop(0, 'rgba(255,255,255,1)');
+        glow.addColorStop(.035, `rgba(${color},.95)`);
+        glow.addColorStop(.075, `rgba(${color},.55)`);
+        glow.addColorStop(.16, `rgba(${color},.14)`);
+        glow.addColorStop(.4, `rgba(${color},.035)`);
+        glow.addColorStop(1, `rgba(${color},0)`);
+        paint.fillStyle = glow;
+        paint.fillRect(0, 0, 128, 128);
+        if (highlighted) {
+          paint.globalCompositeOperation = 'lighter';
+          for (const [angle, length, opacity] of [[0, 47, .8], [Math.PI / 2, 38, .75], [Math.PI / 4, 21, .28], [-Math.PI / 4, 21, .28]]) {
+            paint.save();
+            paint.translate(64, 64);
+            paint.rotate(angle);
+            const ray = paint.createLinearGradient(-length, 0, length, 0);
+            ray.addColorStop(0, `rgba(${color},0)`);
+            ray.addColorStop(.5, `rgba(${color},${opacity})`);
+            ray.addColorStop(1, `rgba(${color},0)`);
+            paint.strokeStyle = ray;
+            paint.lineWidth = 1.1;
+            paint.beginPath();
+            paint.moveTo(-length, 0);
+            paint.lineTo(length, 0);
+            paint.stroke();
+            paint.restore();
+          }
+        }
+        return sprite;
+      }
+      const starSprites = palette.map(color => makeStarSprite(color, false));
+      const highlightSprites = palette.map(color => makeStarSprite(color, true));
+
+      function seedStar(star, initial = false) {
+        const z = initial ? 120 + Math.random() * (CONFIG.depth - 120) : CONFIG.depth;
+        star.x = (Math.random() - .5) * view.width * 1.5 * z / view.focal;
+        star.y = (Math.random() - .5) * view.height * 1.5 * z / view.focal;
+        star.z = z;
+        star.highlighted = Math.random() < CONFIG.highlightRatio;
+        star.size = star.highlighted ? 1.25 + Math.random() * .6 : .4 + Math.pow(Math.random(), 2.3) * 1.2;
+        star.brightness = star.highlighted ? 1 : .58 + Math.random() * .42;
+        star.twinkle = Math.random() * Math.PI * 2;
+        star.colorIndex = Math.floor(Math.random() * palette.length);
+        star.color = palette[star.colorIndex];
+        return star;
+      }
+
+      function setDensity(count) {
+        CONFIG.starCount = count;
+        while (stars.length < count) stars.push(seedStar({}, true));
+        stars.length = count;
+      }
+
+      function resize() {
+        const oldWidth = view.width;
+        const oldHeight = view.height;
+        const oldFocal = view.focal;
+        view.width = window.innerWidth;
+        view.height = window.innerHeight;
+        view.focal = Math.max(view.width, view.height) * .72;
+        view.dpr = Math.min(window.devicePixelRatio || 1, CONFIG.pixelRatioCap);
+        lens.einsteinRadius = Math.min(52, Math.max(32, view.width * .043));
+        lens.influence = lens.einsteinRadius * 4.8;
+        canvas.width = Math.round(view.width * view.dpr);
+        canvas.height = Math.round(view.height * view.dpr);
+        ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+        if (oldWidth && oldHeight) {
+          // 调整窗口时保留星星的相对位置，而不是突然重新随机生成。
+          for (const star of stars) {
+            star.x *= (view.width / oldWidth) * (oldFocal / view.focal);
+            star.y *= (view.height / oldHeight) * (oldFocal / view.focal);
+          }
+          pointer.x *= view.width / oldWidth;
+          pointer.targetX *= view.width / oldWidth;
+          pointer.y *= view.height / oldHeight;
+          pointer.targetY *= view.height / oldHeight;
+        }
+        haze = ctx.createRadialGradient(view.width * .5, view.height * .48, 0,
+          view.width * .5, view.height * .48, Math.max(view.width, view.height) * .65);
+        haze.addColorStop(0, '#0b1222');
+        haze.addColorStop(.3, '#070c16');
+        haze.addColorStop(1, '#020306');
+        render(0);
+      }
+
+      function setPhase(text) {
+        if (state.phase !== text) {
+          state.phase = text;
+          $('phase').textContent = text;
+        }
+      }
+
+      // 静谧 → 加速 → 曲速 → 减速。首尾速度连续，避免硬切。
+      function warpEnvelope(progress) {
+        if (progress < .13) return 0;
+        if (progress < .38) return smooth((progress - .13) / .25);
+        if (progress < .58) return 1;
+        return 1 - smooth((progress - .58) / .42);
+      }
+
+      function endFlight() {
+        state.flying = false;
+        document.body.classList.remove('in-flight');
+        document.body.classList.add('ready');
+        $('welcome').inert = state.immersive;
+        $('progress').style.width = '0%';
+        setPhase(state.paused ? '已暂停' : '静谧星空');
+        window.dispatchEvent(new CustomEvent('space:arrival'));
+      }
+
+      function startFlight() {
+        if (state.flying) return;
+        if (state.paused) setPaused(false);
+        // 减少动态效果偏好下保留静态星空，不播放高速穿梭。
+        if (motionPreference.matches) {
+          setPhase('已启用减少动态效果');
+          return;
+        }
+        state.flying = true;
+        state.flightTime = 0;
+        document.body.classList.add('in-flight');
+        $('welcome').inert = true;
+        closeSettings();
+        setPhase('准备启程');
+        window.dispatchEvent(new CustomEvent('space:departure'));
+      }
+
+      // 点质量透镜的双像近似：源星分成外侧主像与反向次像。
+      // 改变光的投影，不改变星的世界坐标；近轴星光沿切线拉成圆弧。
+      function lensPoint(x, y, result) {
+        result.x = x;
+        result.y = y;
+        result.lensed = false;
+        if (lens.strength < .002) return result;
+        const dx = x - lens.x;
+        const dy = y - lens.y;
+        const r = Math.max(.25, Math.hypot(dx, dy));
+        if (r >= lens.influence) return result;
+        const falloff = 1 - smooth((r - lens.influence * .58) / (lens.influence * .42));
+        const mass = lens.einsteinRadius ** 2 * lens.strength * falloff;
+        if (mass < .05) return result;
+        const root = Math.sqrt(r * r + 4 * mass);
+        const outer = (r + root) * .5;
+        const inner = (root - r) * .5;
+        const u = r / Math.sqrt(mass);
+        const magnification = (u * u + 2) / (u * Math.sqrt(u * u + 4));
+        result.x = lens.x + dx * outer / r;
+        result.y = lens.y + dy * outer / r;
+        result.innerX = lens.x - dx * inner / r;
+        result.innerY = lens.y - dy * inner / r;
+        result.angle = Math.atan2(dy, dx);
+        result.outer = outer;
+        result.inner = inner;
+        result.sourceRadius = r;
+        result.magnification = (magnification + 1) * .5;
+        result.secondary = clamp((magnification - 1) * .5, 0, .9);
+        result.stretch = outer / r;
+        result.lensed = true;
+        return result;
+      }
+
+      function drawStar(star, x, y, radius, alpha, warp, arcRadius = 0, angle = 0, stretch = 1) {
+        const bent = arcRadius > 0 && stretch > 1.12;
+        if (warp < .5 && (star.highlighted || star.size > 1.15)) {
+          const diameter = radius * (star.highlighted ? 34 : 19);
+          const sprite = (star.highlighted ? highlightSprites : starSprites)[star.colorIndex];
+          ctx.globalAlpha = alpha * (1 - warp * 1.5);
+          if (bent) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle + Math.PI / 2);
+            const width = diameter * Math.min(3, Math.sqrt(stretch));
+            ctx.drawImage(sprite, -width / 2, -diameter / 2, width, diameter);
+            ctx.restore();
+          } else {
+            ctx.drawImage(sprite, x - diameter / 2, y - diameter / 2, diameter, diameter);
+          }
+          ctx.globalAlpha = 1;
+        }
+        if (bent) {
+          const halfArc = Math.min(.65, radius * stretch / arcRadius);
+          ctx.strokeStyle = `rgba(${star.color},${alpha * .16})`;
+          ctx.lineWidth = radius * 3.3;
+          ctx.beginPath();
+          ctx.arc(lens.x, lens.y, arcRadius, angle - halfArc, angle + halfArc);
+          ctx.stroke();
+          ctx.strokeStyle = `rgba(${star.color},${alpha})`;
+          ctx.lineWidth = Math.max(.7, radius * 1.2);
+          ctx.beginPath();
+          ctx.arc(lens.x, lens.y, arcRadius, angle - halfArc, angle + halfArc);
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = star.highlighted ? `rgba(255,252,245,${alpha})` : `rgba(${star.color},${alpha})`;
+          ctx.beginPath();
+          ctx.arc(x, y, radius * (1 - warp * .3), 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      function drawBlackHole() {
+        if (lens.strength < .002) return;
+        const radius = lens.einsteinRadius * .4;
+        const photonRadius = radius * 1.17;
+        ctx.globalCompositeOperation = 'source-over';
+        const shadow = ctx.createRadialGradient(lens.x, lens.y, radius * .7, lens.x, lens.y, radius * 2.4);
+        shadow.addColorStop(0, `rgba(0,0,2,${lens.strength})`);
+        shadow.addColorStop(.35, `rgba(0,0,2,${lens.strength * .92})`);
+        shadow.addColorStop(1, 'rgba(0,0,2,0)');
+        ctx.fillStyle = shadow;
+        ctx.beginPath();
+        ctx.arc(lens.x, lens.y, radius * 2.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = `rgba(0,0,1,${lens.strength})`;
+        ctx.beginPath();
+        ctx.arc(lens.x, lens.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+        // 光子环的柔光与较亮弧段，背景星的爱因斯坦弧由 lensPoint 生成。
+        ctx.globalCompositeOperation = 'lighter';
+        const halo = ctx.createRadialGradient(lens.x, lens.y, radius, lens.x, lens.y, radius * 1.65);
+        halo.addColorStop(0, 'rgba(160,196,255,0)');
+        halo.addColorStop(.25, `rgba(195,218,255,${lens.strength * .13})`);
+        halo.addColorStop(.5, `rgba(137,177,244,${lens.strength * .035})`);
+        halo.addColorStop(1, 'rgba(137,177,244,0)');
+        ctx.fillStyle = halo;
+        ctx.beginPath();
+        ctx.arc(lens.x, lens.y, radius * 1.65, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = `rgba(215,230,255,${lens.strength * .3})`;
+        ctx.lineWidth = .8;
+        ctx.beginPath();
+        ctx.arc(lens.x, lens.y, photonRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = `rgba(230,240,255,${lens.strength * .65})`;
+        ctx.lineWidth = 1.25;
+        ctx.beginPath();
+        ctx.arc(lens.x, lens.y, photonRadius, -2.5, -.5);
+        ctx.stroke();
+        ctx.globalCompositeOperation = 'source-over';
+      }
+
+      function render(dt) {
+        if (state.flying) {
+          state.flightTime += dt;
+          if (state.flightTime >= CONFIG.duration) endFlight();
+        }
+        const progress = state.flying ? state.flightTime / CONFIG.duration : 0;
+        const warp = state.flying ? warpEnvelope(progress) : 0;
+        const reduced = motionPreference.matches;
+        state.time += dt;
+        const speed = reduced ? 0 : CONFIG.idleSpeed + Math.pow(warp, 1.7) * CONFIG.warpSpeed * CONFIG.intensity;
+        const follow = reduced ? 0 : 1 - Math.exp(-dt * 13);
+        pointer.x += (pointer.targetX - pointer.x) * follow;
+        pointer.y += (pointer.targetY - pointer.y) * follow;
+        const fade = 1 - Math.exp(-dt * 6);
+        pointer.strength += ((pointer.active ? 1 : 0) - pointer.strength) * fade;
+        lens.x = pointer.x;
+        lens.y = pointer.y;
+        lens.strength = pointer.strength;
+
+        const cx = view.width * .5;
+        const cy = view.height * .48;
+
+        // 每帧清屏，再用深度差绘制光束。不会累积帧率相关的拖影。
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = haze || '#030509';
+        ctx.fillRect(0, 0, view.width, view.height);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'round';
+
+        for (const star of stars) {
+          star.z -= speed * dt;
+          if (star.z < 18) seedStar(star);
+
+          const scale = view.focal / star.z;
+          const x = cx + star.x * scale;
+          const y = cy + star.y * scale;
+          if (x < -80 || x > view.width + 80 || y < -80 || y > view.height + 80) {
+            if (dt > 0) seedStar(star);
+            continue;
+          }
+
+          const distance = Math.hypot(x - cx, y - cy);
+          const depthFade = clamp((CONFIG.depth - star.z) / CONFIG.depth * .6 + .48);
+          const centerFade = .7 + .3 * smooth(distance / 100);
+          const twinkle = reduced ? 1 : .9 + .1 * Math.sin(state.time * (star.highlighted ? 1.2 : .8) + star.twinkle);
+          const alpha = clamp(star.brightness * depthFade * centerFade * twinkle + warp * .15, .15, 1);
+          const radius = clamp(star.size * (.55 + scale * .4), .45, star.highlighted ? 3 : 2.2);
+          lensPoint(x, y, imagePoint);
+
+          if (warp > .015) {
+            // 在更远的 z 平面投影同一颗星作为光束尾端。
+            const tailDepth = star.z + speed * (.12 + warp * .23);
+            const tailScale = view.focal / tailDepth;
+            const tx = cx + star.x * tailScale;
+            const ty = cy + star.y * tailScale;
+            ctx.strokeStyle = `rgba(${star.color},${alpha * .25})`;
+            ctx.lineWidth = radius * (1.4 + warp * 1.3);
+            ctx.beginPath();
+            // 对整段轨迹取样，光束经过透镜时会弯曲，而不是硬折线。
+            const nearLens = lens.strength > .002 &&
+              Math.hypot((tx + x) * .5 - lens.x, (ty + y) * .5 - lens.y) < lens.influence + Math.hypot(tx - x, ty - y) * .5;
+            const segments = nearLens ? 16 : 1;
+            let previousX = 0;
+            let previousY = 0;
+            for (let i = 0; i <= segments; i++) {
+              const t = i / segments;
+              const sourceX = tx + (x - tx) * t;
+              const sourceY = ty + (y - ty) * t;
+              lensPoint(sourceX, sourceY, trailPoint);
+              const branchChanged = i > 0 && nearLens &&
+                Math.hypot(trailPoint.x - previousX, trailPoint.y - previousY) > lens.einsteinRadius * 1.3 &&
+                Math.hypot(sourceX - lens.x, sourceY - lens.y) < lens.einsteinRadius * .7;
+              if (i === 0 || branchChanged) ctx.moveTo(trailPoint.x, trailPoint.y);
+              else if (nearLens) ctx.quadraticCurveTo(previousX, previousY,
+                (previousX + trailPoint.x) * .5, (previousY + trailPoint.y) * .5);
+              else ctx.lineTo(trailPoint.x, trailPoint.y);
+              previousX = trailPoint.x;
+              previousY = trailPoint.y;
+            }
+            if (nearLens) ctx.lineTo(previousX, previousY);
+            ctx.stroke();
+            ctx.strokeStyle = `rgba(${star.color},${alpha * .85})`;
+            ctx.lineWidth = Math.max(.55, radius * .55);
+            ctx.stroke();
+          }
+
+          drawStar(star, imagePoint.x, imagePoint.y, radius,
+            clamp(alpha * (imagePoint.lensed ? Math.min(2.3, imagePoint.magnification) : 1)), warp,
+            imagePoint.lensed ? imagePoint.outer : 0, imagePoint.angle, imagePoint.lensed ? imagePoint.stretch : 1);
+          if (imagePoint.lensed && imagePoint.secondary > .025 && imagePoint.inner > lens.einsteinRadius * .42) {
+            drawStar(star, imagePoint.innerX, imagePoint.innerY, radius * .8,
+              alpha * imagePoint.secondary, warp, imagePoint.inner, imagePoint.angle + Math.PI,
+              Math.max(1.2, imagePoint.inner / imagePoint.sourceRadius));
+          }
+        }
+        ctx.globalCompositeOperation = 'source-over';
+
+        // 中央柔光随速度变化；不使用满屏白闪。
+        if (warp > .05) {
+          const glowRadius = Math.max(view.width, view.height) * (.16 + warp * .2);
+          const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowRadius);
+          glow.addColorStop(0, `rgba(154,185,242,${warp * .11})`);
+          glow.addColorStop(.25, `rgba(99,137,205,${warp * .05})`);
+          glow.addColorStop(1, 'rgba(70,100,170,0)');
+          ctx.fillStyle = glow;
+          ctx.fillRect(0, 0, view.width, view.height);
+        }
+        drawBlackHole();
+
+        if (state.flying) {
+          $('progress').style.width = `${progress * 100}%`;
+          if (state.paused) setPhase('已暂停');
+          else if (progress < .13) setPhase('准备启程');
+          else if (progress < .38) setPhase('正在加速');
+          else if (progress < .58) setPhase('曲速航行');
+          else setPhase('即将抵达');
+        }
+      }
+
+      function shouldAnimate() {
+        return !state.paused && !document.hidden && !motionPreference.matches;
+      }
+
+      function frame(now) {
+        state.frameId = null;
+        const dt = state.lastFrame === null ? 0 : Math.min((now - state.lastFrame) / 1000, .05);
+        state.lastFrame = now;
+        render(dt);
+        if (shouldAnimate()) state.frameId = requestAnimationFrame(frame);
+      }
+
+      function resumeLoop() {
+        state.lastFrame = null;
+        if (shouldAnimate() && state.frameId === null) state.frameId = requestAnimationFrame(frame);
+      }
+
+      function stopLoop() {
+        if (state.frameId !== null) cancelAnimationFrame(state.frameId);
+        state.frameId = null;
+        state.lastFrame = null;
+      }
+
+      function setPaused(paused) {
+        state.paused = paused;
+        $('pause').setAttribute('aria-pressed', String(paused));
+        $('pause').setAttribute('aria-label', paused ? '继续动画' : '暂停动画');
+        $('pause-icon').toggleAttribute('hidden', paused);
+        $('play-icon').toggleAttribute('hidden', !paused);
+        if (paused) {
+          stopLoop();
+          setPhase('已暂停');
+        } else {
+          setPhase(state.flying ? '准备启程' : motionPreference.matches ? '已启用减少动态效果' : '静谧星空');
+          resumeLoop();
+        }
+      }
+
+      function closeSettings(restoreFocus = false) {
+        const wasOpen = !$('settings').hidden;
+        $('settings').hidden = true;
+        $('settings-toggle').setAttribute('aria-expanded', 'false');
+        if (restoreFocus && wasOpen) $('settings-toggle').focus();
+      }
+
+      function setImmersive(immersive) {
+        state.immersive = immersive;
+        closeSettings();
+        document.body.classList.toggle('immersive', immersive);
+        document.querySelectorAll('.chrome').forEach((element) => { element.inert = immersive; });
+        $('welcome').inert = immersive || state.flying;
+        $('return').tabIndex = immersive ? 0 : -1;
+        (immersive ? $('return') : $('immerse')).focus({ preventScroll: true });
+      }
+
+      $('replay').addEventListener('click', startFlight);
+      $('pause').addEventListener('click', () => setPaused(!state.paused));
+      $('immerse').addEventListener('click', () => setImmersive(true));
+      $('return').addEventListener('click', () => setImmersive(false));
+      $('settings-toggle').addEventListener('click', () => {
+        const open = $('settings').hidden;
+        $('settings').hidden = !open;
+        $('settings-toggle').setAttribute('aria-expanded', String(open));
+        if (open) $('density').focus();
+      });
+      $('density').addEventListener('input', (event) => {
+        const value = Number(event.target.value);
+        $('density-value').value = String(value);
+        setDensity(value);
+        if (!shouldAnimate()) render(0);
+      });
+      $('intensity').addEventListener('input', (event) => {
+        CONFIG.intensity = Number(event.target.value);
+        $('intensity-value').value = `${CONFIG.intensity.toFixed(1)}×`;
+        if (!shouldAnimate()) render(0);
+      });
+
+      document.addEventListener('pointerdown', (event) => {
+        if (!$('settings').hidden && !event.target.closest('#settings, #settings-toggle')) closeSettings();
+      });
+      function clearLens() {
+        pointer.active = false;
+        document.body.classList.remove('lensing');
+        if (motionPreference.matches) {
+          pointer.strength = 0;
+          render(0);
+        }
+      }
+      function moveLens(event) {
+        if (event.target.closest('button, input, #settings')) { clearLens(); return; }
+        if (!pointer.active) {
+          pointer.x = event.clientX;
+          pointer.y = event.clientY;
+        }
+        pointer.active = true;
+        pointer.targetX = event.clientX;
+        pointer.targetY = event.clientY;
+        document.body.classList.add('lensing');
+        if (motionPreference.matches) {
+          pointer.x = pointer.targetX;
+          pointer.y = pointer.targetY;
+          pointer.strength = 1;
+          render(0);
+        }
+      }
+      window.addEventListener('pointermove', moveLens);
+      window.addEventListener('pointerdown', event => {
+        if (event.pointerType === 'touch') moveLens(event);
+      });
+      window.addEventListener('pointerup', event => {
+        if (event.pointerType === 'touch') clearLens();
+      });
+      window.addEventListener('pointercancel', clearLens);
+      window.addEventListener('blur', clearLens);
+      document.addEventListener('pointerleave', clearLens);
+      document.addEventListener('keydown', (event) => {
+        if (event.code === 'Escape') {
+          if (state.immersive) setImmersive(false);
+          else closeSettings(true);
+          return;
+        }
+        if (event.repeat || event.ctrlKey || event.metaKey || event.altKey ||
+            event.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+        if (event.code === 'Space' && !event.target.closest('button')) { event.preventDefault(); startFlight(); }
+        if (event.code === 'KeyP') setPaused(!state.paused);
+        if (event.code === 'KeyH') setImmersive(!state.immersive);
+      });
+      window.addEventListener('resize', resize);
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) stopLoop();
+        else resumeLoop();
+      });
+      motionPreference.addEventListener('change', () => {
+        if (motionPreference.matches) {
+          stopLoop();
+          pointer.strength = 0;
+          pointer.active = false;
+          document.body.classList.remove('lensing');
+          endFlight();
+          render(0);
+          setPhase('已启用减少动态效果');
+        } else {
+          setPhase(state.paused ? '已暂停' : '静谧星空');
+          resumeLoop();
+        }
+      });
+
+      resize();
+      setDensity(CONFIG.starCount);
+      render(0);
+      if (motionPreference.matches) {
+        endFlight();
+        setPhase('已启用减少动态效果');
+        $('motion-note').textContent = '系统已启用减少动态效果，当前显示静态星空。';
+      } else {
+        document.body.classList.add('in-flight');
+        resumeLoop();
+      }
+
+      // 可嵌入其他页面；在 space:arrival 事件中接入实际欢迎页。
+      window.spaceWarp = Object.freeze({
+        replay: startFlight,
+        pause: () => setPaused(true),
+        resume: () => setPaused(false),
+      });
+    })();
+  </script>
+</body>
+</html>
